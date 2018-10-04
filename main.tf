@@ -25,9 +25,17 @@ resource "aws_s3_bucket" "logbucket" {
   force_destroy = true
 }
 
+data "template_file" "s3_profile" {
+  template = "${file("${path.module}/cloudtrail-bucketpolicy.json")}"
+
+  vars {
+    s3_log_bucket_arn = "${aws_s3_bucket.logbucket.arn}"
+  }
+}
+
 resource "aws_s3_bucket_policy" "logbucket_policy" {
   bucket = "${aws_s3_bucket.logbucket.id}"
-  policy = "${file("cloudtrail-bucketpolicy.json")}"
+  policy = "${data.template_file.s3_profile.rendered}"
 }
 
 resource "aws_cloudwatch_log_group" "log_group" {
@@ -40,10 +48,18 @@ resource "aws_iam_role" "logging_role" {
   assume_role_policy = "${file("cloudtrail-execution.json")}"
 }
 
+data "template_file" "cloudtrail_profile" {
+  template = "${file("${path.module}/cloudwatch.json")}"
+
+  vars {
+    cloudwatch_log_group_arn = "${aws_cloudwatch_log_group.log_group.arn}"
+  }
+}
+
 resource "aws_iam_role_policy" "logging_policy" {
   name   = "cloudwatch-logging-policy-tf"
   role   = "${aws_iam_role.logging_role.id}"
-  policy = "${file("cloudwatch.json")}"
+  policy = "${data.template_file.cloudtrail_profile.rendered}"
 }
 
 # create an sns topic to receive notifications from our event processing lambda
