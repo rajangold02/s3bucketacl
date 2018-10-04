@@ -7,7 +7,7 @@
         "logs:CreateLogStream"
       ],
       "Resource": [
-        "${aws_cloudwatch_log_group.log_group.arn}"
+        "${cloudwatch_log_group_arn}"
       ]
     },
     {
