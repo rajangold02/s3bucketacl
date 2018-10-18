@@ -19,6 +19,7 @@
             "Effect": "Allow",
             "Action": [
                 "s3:GetBucketAcl",
+				"s3:GetBucketTagging",
                 "s3:GetBucketPolicy"
             ],
             "Resource": "*"
@@ -28,6 +29,7 @@
             "Effect": "Allow",
             "Action": [
                 "s3:PutBucketAcl",
+				"s3:DeleteBucketPolicy",
                 "s3:PutBucketPolicy"
             ],
             "Resource": "arn:aws:s3:::*"

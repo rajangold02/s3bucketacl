@@ -4,23 +4,76 @@ import json
 import urllib
 import boto3
 import os
+import sys
 
 s3 = boto3.client('s3')
 
 def lambda_handler(event, context):
+    print('event  12  :',event)
+    uri_no = True
     bucketname = event['detail']['requestParameters']['bucketName']
-    try:
-        response = s3.get_bucket_tagging(Bucket=bucketname)
-        if response['TagSet'][0]['Value'] != 'confidential':
+    accountid = event['account']
+    allUsersUri = 'http://acs.amazonaws.com/groups/global/AllUsers'
+    authenticatedUsersUri = 'http://acs.amazonaws.com/groups/global/AuthenticatedUsers'
+    publicPermissions = []
+    eventName = event['detail']['eventName'];
+    
+    if eventName == 'PutBucketAcl':
+        grants = event['detail']['requestParameters']['AccessControlPolicy']['AccessControlList']['Grant']
+        print(len(grants))
+        if len(grants) > 1:
+            for  grant in grants:
+                try:
+                    if grant['Grantee']['URI'] is not None:
+                        if grant['Grantee']['URI'] and (grant['Grantee']['URI'] == allUsersUri or grant['Grantee'][ 'URI'] == authenticatedUsersUri):
+                            uri_no = True
+                            if 'READ' in grant['Permission']:
+                                publicPermissions.append('read')
+                            else:
+                                publicPermissions.append('write')
+                                
+                    else:
+                        uri_no = False
+		
+                except:
+                    continue
+		
+    elif eventName == 'PutBucketPolicy':
+        policy = event['detail']['requestParameters']['bucketPolicy']['Statement'][0]['Action'][0]
+        if policy == 's3:GetObject':
+            publicPermissions.append("read")
+        elif policy == 's3:PutObject':
+            publicPermissions.append("write")
+    if len(publicPermissions) != 0:
+        try:
+            response = s3.get_bucket_tagging(Bucket=bucketname)
+            if response['TagSet'][0]['Key'] == 'PublicAccess' and response['TagSet'][0]['Value'] == 'True':
+                sns = boto3.client(service_name="sns")
+                topicArn = os.environ['snsTopicArn']
+                #remove duplicate
+                duplicateRemovedLIst = remove(publicPermissions)
+                access = ' '
+                # get user details
+                user = getUserDetails(event)
+                sns.publish(
+                TopicArn = topicArn,
+                Message = 'The following S3 bucket permission has been changed to public ' + access.join(duplicateRemovedLIst)+
+            ' Access. \n\n Account_ID: ' +str(accountid)+'\n BucketName: ' +str(bucketname)+'\n IAM User Changed the permission: ' +user
+                )
+            else:
+                eventExecution(**event)
+                    
+        except:  
             eventExecution(**event)
-        
-    except:    
-        eventExecution(**event)
+            
+    else:
+        print('uri non exist')
 
 #Skip Event Execution Using Tagset By Comparing Tag Value.
 #Calling **event from event parameters.
 #Checking condition for bucket acl, bucket policy and Creating acl while creating bucket 
 def eventExecution(**event):
+    print('log')
     allUsersUri = 'http://acs.amazonaws.com/groups/global/AllUsers'
     authenticatedUsersUri = 'http://acs.amazonaws.com/groups/global/AuthenticatedUsers'
     accountid = event['account']
@@ -76,7 +129,7 @@ def eventExecution(**event):
         sns.publish(
         TopicArn = topicArn,
             Message = 'The following S3 bucket permission has been changed to public ' + access.join(duplicateRemovedLIst) +
-            ' Access. \n\n Account_ID: ' +str(accountid)+'\n BucketName: ' +str(bucketname)+'\n IAM User Changed the permission: ' +user
+            ' Access. \n\n Account_ID: ' +str(accountid)+'\n BucketName: ' +str(bucketname)+'\n IAM User Changed the permission: ' +user+ '\n\n Note:- Lambda Changed Bucket Public Permission To Private.'
         )
     return
 
